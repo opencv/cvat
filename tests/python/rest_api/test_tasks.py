@@ -50,6 +50,11 @@ from .utils import (
     wait_until_task_is_created,
 )
 
+_DATUMARO_FORMAT_FOR_DIMENSION = {
+    "2d": "Datumaro 1.0",
+    "3d": "Datumaro 3D 1.0",
+}
+
 
 def get_cloud_storage_content(username: str, cloud_storage_id: int, manifest: Optional[str] = None):
     with make_api_client(username) as api_client:
@@ -744,6 +749,53 @@ class TestGetTaskDataset:
 
             response = export_dataset(api_client.tasks_api.retrieve_dataset_endpoint, id=task["id"])
             assert response.data
+
+    @pytest.mark.parametrize("dimension", ["2d", "3d"])
+    @pytest.mark.parametrize("mode", ["annotation", "interpolation"])
+    def test_datumaro_export_without_annotations_includes_image_info(
+        self, admin_user, tasks, mode, dimension, labels
+    ):
+        task = next(
+            t
+            for t in tasks
+            if t.get("size")
+            if mode != "2d" or t["mode"] == mode
+            if t["dimension"] == dimension
+            if all(
+                label["type"] != "skeleton"
+                for label in labels
+                if label.get("task_id") == t["id"]
+                or t.get("project_id")
+                and label.get("project_id") == t["project_id"]
+            )
+        )
+
+        with make_api_client(admin_user) as api_client:
+            response = export_dataset(
+                api_client.tasks_api.retrieve_annotations_endpoint,
+                id=task["id"],
+                format=_DATUMARO_FORMAT_FOR_DIMENSION[dimension],
+            )
+            assert response.status == HTTPStatus.OK
+
+        with zipfile.ZipFile(io.BytesIO(response.data)) as zip_file:
+            annotations = json.loads(zip_file.read("annotations/default.json"))
+
+        assert annotations["items"]
+        for item in annotations["items"]:
+            assert "media" not in item
+
+            if dimension == "2d":
+                assert osp.splitext(item["image"]["path"])[0] == item["id"]
+                assert not Path(item["image"]["path"]).is_absolute()
+                assert tuple(item["image"]["size"]) > (0, 0)
+            elif dimension == "3d":
+                assert osp.splitext(osp.basename(item["point_cloud"]["path"]))[0] == item["id"]
+                assert not Path(item["point_cloud"]["path"]).is_absolute()
+                for related_image in item["related_images"]:
+                    assert not Path(related_image["path"]).is_absolute()
+                    if "size" in related_image:
+                        assert tuple(related_image["size"]) > (0, 0)
 
 
 @pytest.mark.usefixtures("restore_db_per_function")
@@ -2582,6 +2634,43 @@ class TestImportTaskAnnotations:
         self._delete_annotations(task_id)
         task.import_annotations(self.import_format, file_path)
         self._check_annotations(task_id)
+
+    @pytest.mark.parametrize("dimension", ["2d", "3d"])
+    def test_can_import_datumaro_json(self, admin_user, tasks, dimension, labels):
+        task = next(
+            t
+            for t in tasks
+            if t.get("size")
+            if t["dimension"] == dimension
+            if all(
+                label["type"] != "skeleton"
+                for label in labels
+                if label.get("task_id") == t["id"]
+                or t.get("project_id")
+                and label.get("project_id") == t["project_id"]
+            )
+        )
+
+        with make_api_client(admin_user) as api_client:
+            response = export_dataset(
+                api_client.tasks_api.retrieve_annotations_endpoint,
+                id=task["id"],
+                format=_DATUMARO_FORMAT_FOR_DIMENSION[dimension],
+            )
+            assert response.status == HTTPStatus.OK
+
+        with zipfile.ZipFile(io.BytesIO(response.data)) as zip_file:
+            annotations = zip_file.read("annotations/default.json")
+
+        with Client(BASE_URL) as client, TemporaryDirectory() as tempdir:
+            client.config.status_check_period = 0.01
+            client.login((admin_user, USER_PASS))
+
+            annotations_path = Path(tempdir) / "annotations.json"
+            annotations_path.write_bytes(annotations)
+            client.tasks.retrieve(task["id"]).import_annotations(
+                _DATUMARO_FORMAT_FOR_DIMENSION[dimension], annotations_path
+            )
 
 
 class TestImportWithComplexFilenames:
