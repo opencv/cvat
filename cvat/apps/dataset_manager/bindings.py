@@ -194,7 +194,7 @@ class CommonData(InstanceLabelData):
     Tag = namedtuple('Tag', 'frame, label, attributes, source, group, id')
     Tag.__new__.__defaults__ = (0, None)
     Frame = namedtuple(
-        'Frame', 'idx, id, frame, name, width, height, labeled_shapes, tags, shapes, labels')
+        'Frame', 'idx, id, frame, name, width, height, labeled_shapes, tags, shapes, labels, subset')
     Label = namedtuple('Label', 'id, name, color, type')
 
     def __init__(self,
@@ -218,6 +218,7 @@ class CommonData(InstanceLabelData):
         self._use_server_track_ids = use_server_track_ids
         self._required_frames = included_frames
 
+        self._db_subset = db_task.subset
         super().__init__(db_task)
 
         self._init_frame_info()
@@ -262,6 +263,7 @@ class CommonData(InstanceLabelData):
                     "path": "frame_{:06d}".format(self.abs_frame_id(frame)),
                     "width": self._db_data.video.width,
                     "height": self._db_data.video.height,
+                    "subset": self._db_subset,
                 } for frame in self.rel_range
             }
         else:
@@ -272,6 +274,7 @@ class CommonData(InstanceLabelData):
                     "path": db_image.path,
                     "width": db_image.width,
                     "height": db_image.height,
+                    "subset": self._db_subset,
                 } for db_image in queryset
             }
 
@@ -402,6 +405,7 @@ class CommonData(InstanceLabelData):
             if frame not in frames:
                 frames[frame] = CommonData.Frame(
                     idx=idx,
+                    subset=frame_info["subset"],
                     id=frame_info.get("id", 0),
                     frame=frame,
                     name=frame_info["path"],
@@ -1481,9 +1485,14 @@ class CvatTaskOrJobDataExtractor(dm.SourceExtractor, CVATDataExtractorMixin):
         dimension: DimensionType = DimensionType.DIM_2D,
         **kwargs
     ):
+        instance_meta = instance_data.meta[instance_data.META_FIELD]
+
         dm.SourceExtractor.__init__(
-            self, media_type=dm.Image if dimension == DimensionType.DIM_2D else PointCloud
+            self,
+            subset=instance_meta["subset"],
+            media_type=dm.Image if dimension == DimensionType.DIM_2D else PointCloud
         )
+
         CVATDataExtractorMixin.__init__(self, **kwargs)
 
         instance_meta = instance_data.meta[instance_data.META_FIELD]
@@ -1521,8 +1530,10 @@ class CvatTaskOrJobDataExtractor(dm.SourceExtractor, CVATDataExtractorMixin):
                 dm_item = dm.DatasetItem(
                         id=osp.splitext(frame_data.name)[0],
                         annotations=dm_anno, media=dm_image,
+                        subset=frame_data.subset,
                         attributes={'frame': frame_data.frame
                     })
+
             elif dimension == DimensionType.DIM_3D:
                 attributes = {'frame': frame_data.frame}
                 if format_type == "sly_pointcloud":
