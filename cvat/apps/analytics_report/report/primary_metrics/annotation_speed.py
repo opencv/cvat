@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: MIT
 
+from copy import deepcopy
+
 from dateutil import parser
 
 import cvat.apps.dataset_manager as dm
@@ -55,14 +57,6 @@ class JobAnnotationSpeed(PrimaryMetricBase):
 
             return count
 
-        def get_default():
-            return {
-                "data_series": {
-                    "object_count": [],
-                    "working_time": [],
-                }
-            }
-
         # Calculate object count
 
         annotations = dm.task.get_job_data(self._db_obj.id)
@@ -75,35 +69,32 @@ class JobAnnotationSpeed(PrimaryMetricBase):
         timestamp_str = timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
 
         report = self._db_obj.analytics_report
-        if report is None:
-            statistics = get_default()
-        else:
+        data_series = self.get_empty()
+        if report is not None:
             statistics = next(
-                filter(lambda s: s["name"] == "annotation_speed", report.statistics), get_default()
+                filter(lambda s: s["name"] == "annotation_speed", report.statistics), None
             )
+            if statistics is not None:
+                data_series = deepcopy(statistics["data_series"])
 
-        data_series = statistics["data_series"]
-
-        last_entry_count = 0
+        previous_count = 0
         start_datetime = self._db_obj.created_date
         if data_series["object_count"]:
-            last_entry = data_series["object_count"][-1]
-            last_entry_timestamp = parser.parse(last_entry["datetime"])
+            last_entry_timestamp = parser.parse(data_series["object_count"][-1]["datetime"])
 
             if last_entry_timestamp.date() == timestamp.date():
                 data_series["object_count"] = data_series["object_count"][:-1]
                 data_series["working_time"] = data_series["working_time"][:-1]
-                if len(data_series["object_count"]):
-                    last_last_entry = data_series["object_count"][-1]
-                    start_datetime = parser.parse(last_last_entry["datetime"])
-                    last_entry_count = last_last_entry["value"]
-            else:
-                last_entry_count = last_entry["value"]
-                start_datetime = parser.parse(last_entry["datetime"])
+
+            for entry in data_series["object_count"]:
+                previous_count += entry["value"]
+
+            if len(data_series["object_count"]):
+                start_datetime = parser.parse(data_series["object_count"][-1]["datetime"])
 
         data_series["object_count"].append(
             {
-                "value": object_count - last_entry_count,
+                "value": object_count - previous_count,
                 "datetime": timestamp_str,
             }
         )
@@ -113,7 +104,7 @@ class JobAnnotationSpeed(PrimaryMetricBase):
         parameters = {
             "job_id": self._db_obj.id,
             "start_datetime": start_datetime,
-            "end_datetime": self._get_utc_now(),
+            "end_datetime": timestamp,
         }
 
         result = self._make_clickhouse_query(parameters)
