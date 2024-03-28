@@ -24,6 +24,7 @@ import Space from 'antd/lib/space';
 import Switch from 'antd/lib/switch';
 import { getCore, Storage, StorageData } from 'cvat-core-wrapper';
 import StorageField from 'components/storage/storage-field';
+import ReactMarkdown from 'react-markdown';
 import { createAction, ActionUnion } from 'utils/redux';
 import ImportDatasetStatusModal from './import-dataset-status-modal';
 
@@ -462,9 +463,13 @@ function ImportDatasetModal(props: StateToProps): JSX.Element {
                     uploadParams.convMaskToPoly,
                 ));
             const resToPrint = uploadParams.resource.charAt(0).toUpperCase() + uploadParams.resource.slice(1);
+            const description = `${resToPrint} import was started for ${instanceType}.` +
+            ' You can check progress [here](/requests)';
             Notification.info({
                 message: `${resToPrint} import started`,
-                description: `${resToPrint} import was started for ${instanceType}. `,
+                description: (
+                    <ReactMarkdown>{description}</ReactMarkdown>
+                ),
                 className: `cvat-notification-notice-import-${uploadParams.resource}-start`,
             });
         }

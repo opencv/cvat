@@ -92,6 +92,148 @@ slogger = ServerLogManager(__name__)
 
 _UPLOAD_PARSER_CLASSES = api_settings.DEFAULT_PARSER_CLASSES + [MultiPartParser]
 
+rq_percent = 0
+
+
+
+def get_job_info(job):
+    status = job.meta.get('status', 'In progress')
+    state = job.get_status()
+    t = job.id.split(':')[0]
+    if 'annotations' in job.id:
+        t = t+':annotations'
+    elif 'dataset' in job.id:
+        t = t+':dataset'
+    elif 'backup' in job.id:
+        t = t+':backup'
+    else:
+        if 'create' not in job.id:
+            t = t+':backup'
+        else:
+            t = t.split('.')[0]
+    target = 'job'
+    if 'project' in job.id:
+        target = 'project'
+    if 'task' in job.id:
+        target = 'task'
+    return {
+                "status": state,
+                "message": job.meta.get('formatted_exception', 'In progress') if state == 'failed' else status,
+                "id": job.id,
+                "operation": {
+                            "type": t,
+                            "target": target,
+                            "project_id": job.meta['project_id'],
+                            "task_id": job.meta['task_id'],
+                            "job_id": job.meta['job_id'],
+                            "format": "CVAT for images 1.1",
+                            "name": job.id,
+                },
+                "percent": job.meta.get('task_progress', 0)*100,
+                "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                "start_date": "2023-03-30T09:37:31.708000Z",
+                "finish_date": "2023-03-30T10:37:31.708000Z",
+                "expire_date": "",
+                "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                },
+                "result_url": "http://localhost:3000/api/projects/53/dataset?org=TestOrg&use_default_location=true&filename=ex.zip&format=CVAT+for+images+1.1&action=download" if "export:" in t else "",
+            }
+
+def get_job_info_status(job):
+    status = job.meta.get('status', 'In progress')
+    state = job.get_status()
+    t = job.id.split(':')[0]
+    if 'annotations' in job.id:
+        t = t+':annotations'
+    elif 'dataset' in job.id:
+        t = t+':dataset'
+    elif 'backup' in job.id:
+        t = t+':backup'
+    else:
+        if 'create' not in job.id:
+            t = t+':backup'
+        else:
+            t = t.split('.')[0]
+
+    target = 'job'
+    if 'project' in job.id:
+        target = 'project'
+    if 'task' in job.id:
+        target = 'task'
+    return {
+                "status": state,
+                "message": job.meta.get('formatted_exception', 'In progress') if state == 'failed' else status,
+                "id": job.id,
+                "operation": {
+                            "type": t,
+                            "target": target,
+                            "project_id": job.meta['project_id'],
+                            "task_id": job.meta['task_id'],
+                            "job_id": job.meta['job_id'],
+                            "format": "CVAT for images 1.1",
+                            "name": job.id,
+                },
+                "percent": job.meta.get('task_progress', 0) * 100,
+                "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                "start_date": "2023-03-30T09:37:31.708000Z",
+                "finish_date": "2023-03-30T10:37:31.708000Z",
+                "expire_date": "",
+                "owner": {
+                    "id": 1,
+                    "username": "kirill",
+                },
+                "result_url": "http://localhost:3000/api/projects/53/dataset?org=TestOrg&use_default_location=true&filename=ex.zip&format=CVAT+for+images+1.1&action=download" if "export:" in t else "",
+            }
+
+def get_all_jobs_from_queue(queue, request):
+    user_id = request.user.id
+    started_user_jobs = [
+                job
+                for job in queue.job_class.fetch_many(
+                    queue.started_job_registry.get_job_ids(), queue.connection
+                )
+                if job and job.meta.get("user", {}).get("id") == user_id
+        ]
+    finished_user_jobs = [
+                job
+                for job in queue.job_class.fetch_many(
+                    queue.finished_job_registry.get_job_ids(), queue.connection
+                )
+                if job and job.meta.get("user", {}).get("id") == user_id
+        ]
+    failed_user_jobs = [
+                job
+                for job in queue.job_class.fetch_many(
+                    queue.failed_job_registry.get_job_ids(), queue.connection
+                )
+                if job and job.meta.get("user", {}).get("id") == user_id
+        ]
+    deferred_user_jobs = [
+            job
+            for job in queue.job_class.fetch_many(
+                queue.deferred_job_registry.get_job_ids(), queue.connection
+            )
+            # Since there is no cleanup implementation in DeferredJobRegistry,
+            # this registry can contain "outdated" jobs that weren't deleted from it
+            # but were added to another registry. Probably such situations can occur
+            # if there are active or deferred jobs when restarting the worker container.
+            if job and job.meta.get("user", {}).get("id") == user_id and job.is_deferred
+        ]
+    all_user_jobs = started_user_jobs + deferred_user_jobs + finished_user_jobs + failed_user_jobs
+    jobs = sorted(all_user_jobs, key=lambda job: job.created_at)
+    return jobs
+
+def get_all_jobs(request):
+    import_queue = django_rq.get_queue(settings.CVAT_QUEUES.IMPORT_DATA.value)
+    import_jobs = get_all_jobs_from_queue(import_queue, request)
+
+    export_queue = django_rq.get_queue(settings.CVAT_QUEUES.EXPORT_DATA.value)
+    export_jobs = get_all_jobs_from_queue(export_queue, request)
+
+    return import_jobs + export_jobs
+
 @extend_schema(tags=['server'])
 class ServerViewSet(viewsets.ViewSet):
     serializer_class = None
@@ -376,7 +518,9 @@ class ProjectViewSet(viewsets.GenericViewSet, mixins.ListModelMixin,
                 if rq_job is None:
                     return Response(status=status.HTTP_404_NOT_FOUND)
                 elif rq_job.is_finished:
-                    rq_job.delete()
+                    # rq_job.delete()
+                    print(rq_job)
+                    print(rq_job.meta.get("user", {}).get("id"))
                     return Response(status=status.HTTP_201_CREATED)
                 elif rq_job.is_failed:
                     exc_info = process_failed_job(rq_job)
@@ -2965,7 +3109,7 @@ def _export_annotations(
         else:
             if rq_job.is_finished:
                 if location == Location.CLOUD_STORAGE:
-                    rq_job.delete()
+                    # rq_job.delete()
                     return Response(status=status.HTTP_200_OK)
 
                 elif location == Location.LOCAL:
@@ -2987,9 +3131,12 @@ def _export_annotations(
                                 extension=osp.splitext(file_path)[1]
                             )
 
-                        rq_job.delete()
+                        # rq_job.delete()
                         return sendfile(request, file_path, attachment=True, attachment_filename=filename)
+                    serializer = RqIdSerializer(data={'rq_id': rq_id})
+                    serializer.is_valid(raise_exception=True)
 
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
                     return Response(status=status.HTTP_201_CREATED)
                 else:
                     raise NotImplementedError(f"Export to {location} location is not implemented yet")
@@ -3055,7 +3202,10 @@ def _export_annotations(
     handle_dataset_export(db_instance,
         format_name=format_name, cloud_storage=db_storage, save_images=not is_annotation_file)
 
-    return Response(status=status.HTTP_202_ACCEPTED)
+    serializer = RqIdSerializer(data={'rq_id': rq_id})
+    serializer.is_valid(raise_exception=True)
+
+    return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
 def _import_project_dataset(request, rq_id_template, rq_func, db_obj, format_name, filename=None, conv_mask_to_poly=True, location_conf=None):
     format_desc = {f.DISPLAY_NAME: f
@@ -3143,3 +3293,262 @@ def _import_project_dataset(request, rq_id_template, rq_func, db_obj, format_nam
     serializer.is_valid(raise_exception=True)
 
     return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+
+class DataProcessing(viewsets.GenericViewSet):
+    @extend_schema(
+        tags=['requests'],
+    )
+    @action(detail=False, methods=['GET'], url_path='status')
+    def status(self, request):
+        rq_id = request.query_params.get('rq_id')
+        all_user_jobs = get_all_jobs(request)
+        actual_job = None
+        for job in all_user_jobs:
+            if job.id == rq_id:
+                actual_job = job
+        if actual_job:
+            return Response(
+                data= get_job_info_status(actual_job),
+                status=status.HTTP_200_OK
+            )
+
+        if rq_id == 'rq1':
+            return Response(
+                data= {
+                        "status": "Failed",
+                        "message": "cvat.apps.dataset_manager.bindings.CvatImportError: Failed to find dataset at '/home/django/data/tasks/499394/tmp/tmpkr0hn_m9'",
+                        "percent": 0,
+                        "id": "rq1",
+                        "operation": {
+                            "type": "export:dataset",
+                            "format": "CVAT for images 1.1",
+                            "project_id": 1,
+                            "target": "project",
+                            "name": "Project with failed export",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-31T10:37:31.708000Z",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                        },
+                status=status.HTTP_200_OK
+            )
+        elif rq_id == 'rq2':
+            return Response(
+                data=                     {
+                        "status": "Queued",
+                        "message": "In queue",
+                        "percent": 0,
+                        "id": "rq2",
+                        "operation": {
+                            "type": "import:annotations",
+                            "format": "CVAT for images 1.1",
+                            "task_id": 2,
+                            "target": "task",
+                            "name": "Task H1 part 2",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                    },
+                status=status.HTTP_200_OK
+            )
+        elif rq_id == 'rq3':
+            global rq_percent
+            if rq_percent == 10:
+                rq_percent = 0
+            rq_percent += 1
+            return Response(
+                data={
+                        "status": "Started",
+                        "message": "In progress",
+                        "percent": rq_percent * 10,
+                        "id": "rq3",
+                        "operation": {
+                            "target": "project",
+                            "type": "import:dataset",
+                            "format": "CVAT for images 1.1",
+                            "name": "Personal project",
+                            "project_id": 3,
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-30T09:37:31.708000Z",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                    },
+                status=status.HTTP_200_OK
+            )
+        elif rq_id == 'rq4':
+            return Response(
+                data= {
+                        "status": "Finished",
+                        "message": "Done",
+                        "percent": 100,
+                        "id": "rq4",
+                        "operation": {
+                                "type": "export:dataset",
+                                "target": "project",
+                                "project_id": 4,
+                                "name": "Project for export number 4",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-30T09:37:31.708000Z",
+                        "finish_date": "2023-03-30T10:37:31.708000Z",
+                        "expire_date": "2023-03-31T10:37:31.708000Z",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill"
+                        },
+                        "result_url": "http://localhost:3000/api/projects/53/dataset?org=TestOrg&use_default_location=true&filename=ex.zip&format=CVAT+for+images+1.1"
+                    },
+                status=status.HTTP_200_OK
+            )
+        return Response(
+                data= {
+                        "percent": 0,
+                        "status": "Queued",
+                        "message": "In queue",
+                        "id": rq_id,
+                        "operation": {
+                                "type": "export:dataset",
+                                "target": "project",
+                                "project_id": 4,
+                                "name": "Project for export number 4",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill"
+                        },
+                        "result_url": "",
+                    },
+                status=status.HTTP_200_OK
+            )
+
+    @extend_schema(
+        tags=['requests'],
+        parameters=[],
+    )
+    def list(self,request):
+        all_user_jobs = get_all_jobs(request)
+        data = []
+        print(all_user_jobs)
+        for job in all_user_jobs:
+            data.append(get_job_info(job))
+        return Response(
+                data=[
+                    {
+                        "status": "Failed",
+                        "message": "cvat.apps.dataset_manager.bindings.CvatImportError: Failed to find dataset at '/home/django/data/tasks/499394/tmp/tmpkr0hn_m9'",
+                        "percent": 0,
+                        "id": "rq1",
+                        "operation": {
+                            "type": "export:dataset",
+                            "format": "CVAT for images 1.1",
+                            "project_id": 1,
+                            "target": "project",
+                            "name": "Project with failed export",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-31T10:37:31.708000Z",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                    },
+                    {
+                        "status": "Queued",
+                        "message": "In queue",
+                        "percent": 0,
+                        "id": "rq2",
+                        "operation": {
+                            "type": "import:annotations",
+                            "format": "CVAT for images 1.1",
+                            "task_id": 2,
+                            "target": "task",
+                            "name": "Task H1 part 2",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                    },
+                    {
+                        "status": "Started",
+                        "message": "In progress",
+                        "percent": 20,
+                        "id": "rq3",
+                        "operation": {
+                            "target": "project",
+                            "type": "import:dataset",
+                            "format": "CVAT for images 1.1",
+                            "name": "Personal project",
+                            "project_id": 3,
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-30T09:37:31.708000Z",
+                        "finish_date": "",
+                        "expire_date": "",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill",
+                        },
+                    },
+                    {
+                        "status": "Finished",
+                        "message": "Done",
+                        "percent": 100,
+                        "id": "rq4",
+                        "operation": {
+                                "type": "export:dataset",
+                                "target": "project",
+                                "project_id": 4,
+                                "name": "Project for export number 4",
+                        },
+                        "enqueue_date": "2023-03-31T10:37:31.708000Z",
+                        "start_date": "2023-03-30T09:37:31.708000Z",
+                        "finish_date": "2023-03-30T10:37:31.708000Z",
+                        "expire_date": "2023-03-31T10:37:31.708000Z",
+                        "owner": {
+                            "id": 1,
+                            "username": "kirill"
+                        },
+                        "result_url": "http://localhost:3000/api/projects/53/dataset?org=TestOrg&use_default_location=true&filename=ex.zip&format=CVAT+for+images+1.1"
+                    },
+                ] + data,
+                status=status.HTTP_200_OK
+            )
+
+    @extend_schema(
+        tags=['requests'],
+    )
+    @action(detail=False, methods=['GET'])
+    def clear(self,request):
+        all_user_jobs = get_all_jobs(request)
+        for job in all_user_jobs:
+            job.delete()
+        return Response(
+                status=status.HTTP_200_OK
+            )

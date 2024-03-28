@@ -507,6 +507,18 @@ function HeaderComponent(props: Props): JSX.Element {
                 >
                     Cloud Storages
                 </Button>
+                <Button
+                    className={getButtonClassName('requests')}
+                    type='link'
+                    value='requests'
+                    href='/requests'
+                    onClick={(event: React.MouseEvent): void => {
+                        event.preventDefault();
+                        history.push('/requests');
+                    }}
+                >
+                    Requests
+                </Button>
                 {isModelsPluginActive ? (
                     <Button
                         className={getButtonClassName('models')}

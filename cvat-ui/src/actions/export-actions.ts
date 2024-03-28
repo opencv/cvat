@@ -1,11 +1,12 @@
 // Copyright (C) 2021-2022 Intel Corporation
-// Copyright (C) 2022 CVAT.ai Corporation
+// Copyright (C) 2022-2024 CVAT.ai Corporation
 //
 // SPDX-License-Identifier: MIT
 
 import { ActionUnion, createAction, ThunkAction } from 'utils/redux';
 
-import { getCore, Storage } from 'cvat-core-wrapper';
+import { getCore, Storage, Request } from 'cvat-core-wrapper';
+import { updateRequestProgress } from './requests-actions';
 
 const core = getCore();
 
@@ -64,8 +65,8 @@ export const exportActions = {
     exportBackup: (instance: any) => (
         createAction(ExportActionTypes.EXPORT_BACKUP, { instance })
     ),
-    exportBackupSuccess: (instance: any, instanceType: 'task' | 'project', isLocal: boolean) => (
-        createAction(ExportActionTypes.EXPORT_BACKUP_SUCCESS, { instance, instanceType, isLocal })
+    exportBackupSuccess: (instance: any, instanceType: 'task' | 'project') => (
+        createAction(ExportActionTypes.EXPORT_BACKUP_SUCCESS, { instance, instanceType })
     ),
     exportBackupFailed: (instance: any, instanceType: 'task' | 'project', error: any) => (
         createAction(ExportActionTypes.EXPORT_BACKUP_FAILED, { instance, instanceType, error })
@@ -92,15 +93,15 @@ export const exportDatasetAsync = (
     }
 
     try {
-        const result = await instance.annotations
-            .exportDataset(format, saveImages, useDefaultSettings, targetStorage, name);
-        if (result) {
-            const downloadAnchor = window.document.getElementById('downloadAnchor') as HTMLAnchorElement;
-            downloadAnchor.href = result;
-            downloadAnchor.click();
-        }
+        await instance.annotations
+            .exportDataset(format, saveImages, useDefaultSettings, targetStorage, name, {
+                updateProgressCallback: (request: Request) => {
+                    updateRequestProgress(request, dispatch);
+                },
+            });
+
         const resource = saveImages ? 'Dataset' : 'Annotations';
-        dispatch(exportActions.exportDatasetSuccess(instance, instanceType, format, !!result, resource));
+        dispatch(exportActions.exportDatasetSuccess(instance, instanceType, format, true, resource));
     } catch (error) {
         dispatch(exportActions.exportDatasetFailed(instance, instanceType, format, error));
     }
@@ -116,13 +117,13 @@ export const exportBackupAsync = (
     const instanceType = (instance instanceof core.classes.Project) ? 'project' : 'task';
 
     try {
-        const result = await instance.backup(targetStorage, useDefaultSetting, fileName);
-        if (result) {
-            const downloadAnchor = window.document.getElementById('downloadAnchor') as HTMLAnchorElement;
-            downloadAnchor.href = result;
-            downloadAnchor.click();
-        }
-        dispatch(exportActions.exportBackupSuccess(instance, instanceType, !!result));
+        await instance.backup(targetStorage, useDefaultSetting, fileName, {
+            updateProgressCallback: (request: Request) => {
+                updateRequestProgress(request, dispatch);
+            },
+        });
+
+        dispatch(exportActions.exportBackupSuccess(instance, instanceType));
     } catch (error) {
         dispatch(exportActions.exportBackupFailed(instance, instanceType, error as Error));
     }
