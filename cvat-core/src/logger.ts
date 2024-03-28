@@ -225,6 +225,8 @@ Object.defineProperties(Logger.prototype.save, {
                 // potentially new events may be generated during saving
                 // that is why we add this.collection
                 this.collection = [...collectionToSend, ...this.collection];
+
+                await Promise.reject(error);
             } finally {
                 this.saving = false;
             }
