@@ -38,11 +38,6 @@ function LabelsListComponent(): JSX.Element {
                 }
             }
 
-            if (key === '—') {
-                setKeyToLabelMapping(keyToLabelMappingCopy);
-                return;
-            }
-
             // check if this key is assigned to another label
             if (key in keyToLabelMappingCopy) {
                 // try to find a new key for the other label
