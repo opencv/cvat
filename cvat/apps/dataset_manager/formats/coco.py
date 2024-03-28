@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: MIT
 
 import zipfile
-
+import json
+import uuid
 from datumaro.components.dataset import Dataset
 from datumaro.components.annotation import AnnotationType
 
@@ -27,14 +28,20 @@ def _export(dst_file, temp_dir, instance_data, save_images=False):
 def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs):
     if zipfile.is_zipfile(src_file):
         zipfile.ZipFile(src_file).extractall(temp_dir)
+        rename_path_mapping, src_file = update_annotation_data(src_file)
+        reverse_path_id_mapping = {key.rsplit('.', 1)[0]: value.rsplit('.', 1)[0]
+                                   for value, key in rename_path_mapping.items()}
         dataset = Dataset.import_from(temp_dir, 'coco_instances', env=dm_env)
         if load_data_callback is not None:
             load_data_callback(dataset, instance_data)
-        import_dm_annotations(dataset, instance_data)
+        import_dm_annotations(dataset, instance_data, reverse_path_id_mapping)
     else:
+        rename_path_mapping, src_file = update_annotation_data(src_file)
+        reverse_path_id_mapping = {key.rsplit('.', 1)[0]: value
+                                   for value, key in rename_path_mapping.items()}
         dataset = Dataset.import_from(src_file.name,
             'coco_instances', env=dm_env)
-        import_dm_annotations(dataset, instance_data)
+        import_dm_annotations(dataset, instance_data, reverse_path_id_mapping)
 
 @exporter(name='COCO Keypoints', ext='ZIP', version='1.0')
 def _export(dst_file, temp_dir, instance_data, save_images=False):
@@ -65,3 +72,23 @@ def _import(src_file, temp_dir, instance_data, load_data_callback=None, **kwargs
             'coco_person_keypoints', env=dm_env)
         remove_extra_annotations(dataset)
         import_dm_annotations(dataset, instance_data)
+
+
+def update_annotation_data(src_file):
+    rename_mapping = {}
+    with open(src_file.name, 'r') as f:
+        annotation_data = json.load(f)
+
+    for image in annotation_data['images']:
+        original_filename = image['file_name']
+        unique_id = str(uuid.uuid4())[:8]  # Generating a unique ID
+        name, extension = original_filename.split('.')
+        new_name = f"{name}_{unique_id}.{extension}"
+        rename_mapping[original_filename] = new_name
+        image['file_name'] = new_name
+
+    with open(src_file.name, 'w') as f:
+        json.dump(annotation_data, f, indent=4)
+
+    # Returning src_file along with rename_mapping
+    return rename_mapping, src_file

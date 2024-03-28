@@ -276,7 +276,7 @@ class CommonData(InstanceLabelData):
             }
 
         self._frame_mapping = {
-            self._get_filename(info["path"]): frame_number
+            info["path"]: frame_number
             for frame_number, info in self._frame_info.items()
         }
 
@@ -620,9 +620,10 @@ class CommonData(InstanceLabelData):
         path: str, root_hint: Optional[str] = None, *, path_has_ext: bool = True
     ) -> Optional[int]:
         if path_has_ext:
+            match = self._frame_mapping.get(path)
+        else:
             path = self._get_filename(path)
-
-        match = self._frame_mapping.get(path)
+            match = self._get_filename(self._frame_mapping.get(path))
 
         if not match and root_hint and not path.startswith(root_hint):
             path = osp.join(root_hint, path)
@@ -630,16 +631,17 @@ class CommonData(InstanceLabelData):
 
         return match
 
-    def match_frame_fuzzy(self, path: str, *, path_has_ext: bool = True) -> Optional[int]:
+    def match_frame_fuzzy(self, path: str, Mapping: Optional[Dict[str, str]], *, path_has_ext: bool = True) -> Optional[int]:
         # Preconditions:
         # - The input dataset is full, i.e. all items present. Partial dataset
         # matching can't be correct for all input cases.
         # - path is the longest path of input dataset in terms of path parts
 
-        if path_has_ext:
-            path = self._get_filename(path)
+        if Mapping:
+            path = Mapping[path]
 
         path = Path(path).parts
+
         for p, v in self._frame_mapping.items():
             if Path(p).parts[-len(path):] == path: # endswith() for paths
                 return v
@@ -1271,9 +1273,10 @@ class ProjectData(InstanceLabelData):
         root_hint: str = None, path_has_ext: bool = True
     ) -> Optional[int]:
         if path_has_ext:
+            match_task, match_frame = self._frame_mapping.get((subset, path), (None, None))
+        else:
             path = self._get_filename(path)
-
-        match_task, match_frame = self._frame_mapping.get((subset, path), (None, None))
+            match_task, match_frame = self._frame_mapping.get((subset, path), (None, None))
 
         if not match_frame and root_hint and not path.startswith(root_hint):
             path = osp.join(root_hint, path)
@@ -1887,11 +1890,14 @@ def convert_cvat_anno_to_dm(
 def match_dm_item(
     item: dm.DatasetItem,
     instance_data: Union[ProjectData, CommonData],
-    root_hint: Optional[str] = None
+    Remap: Optional[str]  = None,
+    root_hint: Optional[str] = None,
 ) -> int:
     is_video = instance_data.meta[instance_data.META_FIELD]['mode'] == 'interpolation'
 
     frame_number = None
+    if frame_number is None and item.has_image and Remap is not None:
+        frame_number = instance_data.match_frame(Remap, root_hint)
     if frame_number is None and item.has_image:
         frame_number = instance_data.match_frame(item.id + item.image.ext, root_hint)
     if frame_number is None:
@@ -1907,14 +1913,14 @@ def match_dm_item(
     return frame_number
 
 def find_dataset_root(
-    dm_dataset: dm.IDataset, instance_data: Union[ProjectData, CommonData]
+    dm_dataset: dm.IDataset, instance_data: Union[ProjectData, CommonData], Mapping: Optional[Dict[str, str]]
 ) -> Optional[str]:
     longest_path_item = max(dm_dataset, key=lambda item: len(Path(item.id).parts), default=None)
     if longest_path_item is None:
         return None
     longest_path = longest_path_item.id
 
-    matched_frame_number = instance_data.match_frame_fuzzy(longest_path, path_has_ext=False)
+    matched_frame_number = instance_data.match_frame_fuzzy(longest_path, Mapping, path_has_ext=False)
     if matched_frame_number is None:
         return None
 
@@ -1925,7 +1931,7 @@ def find_dataset_root(
 
     return prefix
 
-def import_dm_annotations(dm_dataset: dm.Dataset, instance_data: Union[ProjectData, CommonData]):
+def import_dm_annotations(dm_dataset: dm.Dataset, instance_data: Union[ProjectData, CommonData], Mapping: Optional[Dict[str, str]]  = None):
     if len(dm_dataset) == 0:
         return
 
@@ -1958,13 +1964,19 @@ def import_dm_annotations(dm_dataset: dm.Dataset, instance_data: Union[ProjectDa
 
     label_cat = dm_dataset.categories()[dm.AnnotationType.label]
 
-    root_hint = find_dataset_root(dm_dataset, instance_data)
+    root_hint = find_dataset_root(dm_dataset, instance_data, Mapping)
 
     tracks = {}
 
     for item in dm_dataset:
-        frame_number = instance_data.abs_frame_id(
+        if Mapping is not None:
+            remap = Mapping[item.id]
+            frame_number = instance_data.abs_frame_id(
+            match_dm_item(item, instance_data, remap, root_hint=root_hint))
+        else:
+            frame_number = instance_data.abs_frame_id(
             match_dm_item(item, instance_data, root_hint=root_hint))
+
 
         if (isinstance(instance_data.db_instance, Job)
             and instance_data.db_instance.type == JobType.GROUND_TRUTH
