@@ -1,11 +1,12 @@
 // Copyright (C) 2020-2022 Intel Corporation
-// Copyright (C) 2023 CVAT.ai Corporation
+// Copyright (C) 2024 CVAT.ai Corporation
 //
 // SPDX-License-Identifier: MIT
 
 import './styles.scss';
 import React from 'react';
 import Tabs from 'antd/lib/tabs';
+import notification from 'antd/lib/notification';
 import Text from 'antd/lib/typography/Text';
 import ModalConfirm from 'antd/lib/modal/confirm';
 import {
@@ -198,7 +199,6 @@ export default class LabelsEditor extends React.PureComponent<LabelsEditorProps,
                 transformed.sublabels = (label.sublabels || [])
                     .map((internalLabel: LabelOptColor) => transformLabel(internalLabel));
             }
-
             return transformed;
         }
 
@@ -207,6 +207,11 @@ export default class LabelsEditor extends React.PureComponent<LabelsEditorProps,
             .map((label: LabelOptColor): LabelOptColor => transformLabel(label));
 
         onSubmit(output);
+        this.setState({ constructorMode: ConstructorMode.SHOW });
+        notification.success({
+            message: 'The label has been created!',
+            className: 'cvat-notification-create-label-success',
+        });
     }
 
     public render(): JSX.Element {
