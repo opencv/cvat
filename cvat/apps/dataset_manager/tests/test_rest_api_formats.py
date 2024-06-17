@@ -232,6 +232,8 @@ class _DbTestBase(ApiTestBase):
                                 value = random.choice(task["labels"][0]["attributes"][index_attribute]["values"])
                         elif key_get_values == "default":
                             value = attribute["default_value"]
+                        else:
+                            assert False, f"Unexpected key_get_values value: {key_get_values!r}"
 
                         if item == "tracks" and attribute["mutable"]:
                             for index_shape, _ in enumerate(tmp_annotations[item][index_elem]["shapes"]):
@@ -299,6 +301,8 @@ class _DbTestBase(ApiTestBase):
                                 value = random.choice(task["labels"][0]["attributes"][index_attribute]["values"])
                         elif key_get_values == "default":
                             value = attribute["default_value"]
+                        else:
+                            assert False, f"Unexpected key_get_values value: {key_get_values!r}"
 
                         if item == "tracks" and attribute["mutable"]:
                             for index_shape, _ in enumerate(tmp_annotations[item][index_elem]["shapes"]):
