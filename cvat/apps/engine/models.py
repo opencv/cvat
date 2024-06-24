@@ -90,6 +90,7 @@ class StageChoice(str, Enum):
     ANNOTATION = 'annotation'
     VALIDATION = 'validation'
     ACCEPTANCE = 'acceptance'
+    PUBLISHED = 'published'
 
     @classmethod
     def choices(cls):
@@ -383,6 +384,11 @@ class TaskQuerySet(models.QuerySet):
                        models.Q(segment__job__stage=StageChoice.ACCEPTANCE.value),
                 distinct=True,
             ),
+            published_jobs_count=models.Count(
+                'segment__job',
+                filter=models.Q(segment__job__stage=StageChoice.PUBLISHED.value),
+                distinct=True,
+            ),
             validation_jobs_count=models.Count(
                 'segment__job',
                 filter=models.Q(segment__job__stage=StageChoice.VALIDATION.value),
@@ -444,6 +450,13 @@ class Task(TimestampedModel):
 
     @cached_property
     def completed_jobs_count(self) -> Optional[int]:
+        # Requires this field to be defined externally,
+        # e.g. by calling Task.objects.with_job_summary,
+        # to avoid unexpected DB queries on access.
+        return None
+
+    @cached_property
+    def published_jobs_count(self) -> Optional[int]:
         # Requires this field to be defined externally,
         # e.g. by calling Task.objects.with_job_summary,
         # to avoid unexpected DB queries on access.

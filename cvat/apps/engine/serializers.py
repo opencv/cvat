@@ -139,6 +139,7 @@ class _CollectionSummarySerializer(serializers.Serializer):
 
 class JobsSummarySerializer(_CollectionSummarySerializer):
     completed = serializers.IntegerField(source='completed_jobs_count', allow_null=True)
+    published = serializers.IntegerField(source='published_jobs_count', allow_null=True)
     validation = serializers.IntegerField(source='validation_jobs_count', allow_null=True)
 
     def __init__(self, *, model=models.Job, url_filter_key, **kwargs):
@@ -755,6 +756,8 @@ class JobWriteSerializer(WriteOnceMixin, serializers.ModelSerializer):
             if stage == models.StageChoice.ANNOTATION:
                 validated_data['status'] = models.StatusChoice.ANNOTATION
             elif stage == models.StageChoice.ACCEPTANCE and state == models.StateChoice.COMPLETED:
+                validated_data['status'] = models.StatusChoice.COMPLETED
+            elif stage == models.StageChoice.PUBLISHED:
                 validated_data['status'] = models.StatusChoice.COMPLETED
             else:
                 validated_data['status'] = models.StatusChoice.VALIDATION
