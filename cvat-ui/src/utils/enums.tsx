@@ -21,3 +21,8 @@ export enum StorageStatuses {
     FORBIDDEN = 'FORBIDDEN',
     NOT_FOUND = 'NOT_FOUND',
 }
+
+export enum ViewType {
+    TASKS = 'tasks',
+    ALL = 'all',
+}

@@ -30,6 +30,8 @@ import {
 } from 'actions/annotation-actions';
 import LabelSelector from 'components/label-selector/label-selector';
 import GlobalHotKeys from 'utils/mousetrap-react';
+import { ViewType } from 'utils/enums';
+import { useRegisterShortcuts } from 'utils/hooks';
 
 enum ReducerActionType {
     SWITCH_AUTO_NEXT_FRAME = 'SWITCH_AUTO_NEXT_FRAME',
@@ -172,6 +174,24 @@ const reducer = (state: State, action: ActionUnion<typeof actionCreators>): Stat
 
     return state;
 };
+
+const componentShortcuts = {
+    SWITCH_DRAW_MODE: {
+        name: 'Draw mode',
+        description:
+            'Repeat the latest procedure of drawing with the same parameters (shift to redraw an existing shape)',
+        sequences: ['shift+n', 'n'],
+        view: ViewType.ALL,
+    },
+    CANCEL: {
+        name: 'Cancel',
+        description: 'Cancel any active canvas mode',
+        sequences: ['esc'],
+        view: ViewType.ALL,
+    },
+};
+
+useRegisterShortcuts(componentShortcuts);
 
 function SingleShapeSidebar(): JSX.Element {
     const appDispatch = useDispatch();
