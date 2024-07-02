@@ -25,6 +25,7 @@ import { JobsActionTypes } from 'actions/jobs-actions';
 import { WebhooksActionsTypes } from 'actions/webhooks-actions';
 import { InvitationsActionTypes } from 'actions/invitations-actions';
 import { ServerAPIActionTypes } from 'actions/server-actions';
+import { ConsensusActionTypes } from 'actions/consensus-actions';
 
 import { NotificationsState } from '.';
 
@@ -61,6 +62,7 @@ const defaultState: NotificationsState = {
             exporting: null,
             importing: null,
             moving: null,
+            mergingConsensus: null,
         },
         jobs: {
             updating: null,
@@ -178,6 +180,7 @@ const defaultState: NotificationsState = {
             loadingDone: '',
             importingDone: '',
             movingDone: '',
+            mergingConsensusDone: '',
         },
         models: {
             inferenceDone: '',
@@ -675,6 +678,41 @@ export default function (state = defaultState, action: AnyAction): Notifications
                             shouldLog: !(action.payload.error instanceof ServerError),
                             className: 'cvat-notification-notice-delete-task-failed',
                         },
+                    },
+                },
+            };
+        }
+        case ConsensusActionTypes.MERGE_CONSENSUS_JOBS_FAILED: {
+            const { taskID } = action.payload;
+            if (action.payload.error.code === 400) {
+                action.payload.error.message = "Consensus Jobs aren't annotated.";
+            }
+            return {
+                ...state,
+                errors: {
+                    ...state.errors,
+                    tasks: {
+                        ...state.errors.tasks,
+                        mergingConsensus: {
+                            message: `Could not merge the [task ${taskID}](/tasks/${taskID})`,
+                            reason: action.payload.error,
+                            shouldLog: !(action.payload.error instanceof ServerError),
+                            className: 'cvat-notification-notice-merge-task-failed',
+                        },
+                    },
+                },
+            };
+        }
+        case ConsensusActionTypes.MERGE_CONSENSUS_JOBS_SUCCESS: {
+            const { taskID } = action.payload;
+            return {
+                ...state,
+                messages: {
+                    ...state.messages,
+                    tasks: {
+                        ...state.messages.tasks,
+                        mergingConsensusDone: `Consensus Jobs in the [task ${taskID}](/tasks/${taskID})\
+                            have been merged`,
                     },
                 },
             };

@@ -17,6 +17,7 @@ import {
 } from 'actions/tasks-actions';
 import { exportActions } from 'actions/export-actions';
 import { importActions } from 'actions/import-actions';
+import { consensusActions } from 'actions/consensus-actions';
 
 interface OwnProps {
     taskInstance: any;
@@ -35,6 +36,7 @@ interface DispatchToProps {
     openRunModelWindow: (taskInstance: any) => void;
     deleteTask: (taskInstance: any) => void;
     openMoveTaskToProjectWindow: (taskInstance: any) => void;
+    showConsensusModal: (taskInstance: any) => void;
 }
 
 function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
@@ -74,6 +76,9 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         openMoveTaskToProjectWindow: (taskId: number): void => {
             dispatch(switchMoveTaskModalVisible(true, taskId));
         },
+        showConsensusModal: (taskInstance: any): void => {
+            dispatch(consensusActions.openConsensusModal(taskInstance));
+        },
     };
 }
 
@@ -89,6 +94,7 @@ function ActionsMenuContainer(props: OwnProps & StateToProps & DispatchToProps):
         openRunModelWindow,
         openMoveTaskToProjectWindow,
         onViewAnalytics,
+        showConsensusModal,
     } = props;
     const onClickMenu = (params: MenuInfo): void | JSX.Element => {
         const [action] = params.keyPath;
@@ -108,6 +114,8 @@ function ActionsMenuContainer(props: OwnProps & StateToProps & DispatchToProps):
             showImportModal(taskInstance);
         } else if (action === Actions.VIEW_ANALYTICS) {
             onViewAnalytics();
+        } else if (action === Actions.SHOW_TASK_CONSENSUS_CONFIGURATION) {
+            showConsensusModal(taskInstance);
         }
     };
 
@@ -123,6 +131,7 @@ function ActionsMenuContainer(props: OwnProps & StateToProps & DispatchToProps):
             onClickMenu={onClickMenu}
             taskDimension={taskInstance.dimension}
             backupIsActive={backupIsActive}
+            consensusJobsPerSegment={taskInstance.consensusJobsPerSegment}
         />
     );
 }

@@ -683,6 +683,10 @@ export function implementTask(Task: typeof TaskClass): typeof TaskClass {
                 taskSpec.source_storage = this.sourceStorage.toJSON();
             }
 
+            if (this.consensusJobsPerSegment) {
+                taskSpec.consensus_jobs_per_segment = this.consensusJobsPerSegment;
+            }
+
             const taskDataSpec = {
                 client_files: this.clientFiles,
                 server_files: this.serverFiles,
@@ -733,6 +737,14 @@ export function implementTask(Task: typeof TaskClass): typeof TaskClass {
             this: TaskClass,
         ): ReturnType<typeof TaskClass.prototype.delete> {
             return serverProxy.tasks.delete(this.id);
+        },
+    });
+
+    Object.defineProperty(Task.prototype.mergeConsensusJobs, 'implementation', {
+        value: function mergeConsensusJobsImplementation(
+            this: TaskClass,
+        ): ReturnType<typeof TaskClass.prototype.mergeConsensusJobs> {
+            return serverProxy.tasks.mergeConsensusJobs(this.id);
         },
     });
 

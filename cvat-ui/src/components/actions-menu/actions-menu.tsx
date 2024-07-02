@@ -24,6 +24,7 @@ interface Props {
     inferenceIsActive: boolean;
     taskDimension: DimensionType;
     backupIsActive: boolean;
+    consensusJobsPerSegment: number;
     onClickMenu: (params: MenuInfo) => void;
 }
 
@@ -36,6 +37,7 @@ export enum Actions {
     OPEN_BUG_TRACKER = 'open_bug_tracker',
     BACKUP_TASK = 'backup_task',
     VIEW_ANALYTICS = 'view_analytics',
+    SHOW_TASK_CONSENSUS_CONFIGURATION = 'show_task_consensus_configuration',
 }
 
 function ActionsMenuComponent(props: Props): JSX.Element {
@@ -45,6 +47,7 @@ function ActionsMenuComponent(props: Props): JSX.Element {
         bugTracker,
         inferenceIsActive,
         backupIsActive,
+        consensusJobsPerSegment,
         onClickMenu,
     } = props;
 
@@ -115,6 +118,16 @@ function ActionsMenuComponent(props: Props): JSX.Element {
             View analytics
         </Menu.Item>
     ), 50]);
+
+    if (consensusJobsPerSegment) {
+        menuItems.push([(
+            <Menu.Item
+                key={Actions.SHOW_TASK_CONSENSUS_CONFIGURATION}
+            >
+                Consensus Configuration
+            </Menu.Item>
+        ), 55]);
+    }
 
     if (projectID === null) {
         menuItems.push([(

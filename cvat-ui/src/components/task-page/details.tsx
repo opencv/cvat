@@ -7,6 +7,7 @@ import React from 'react';
 import { connect } from 'react-redux';
 
 import { Row, Col } from 'antd/lib/grid';
+import Tag from 'antd/lib/tag';
 import Text from 'antd/lib/typography/Text';
 import Title from 'antd/lib/typography/Title';
 import moment from 'moment';
@@ -67,6 +68,7 @@ const core = getCore();
 interface State {
     name: string;
     subset: string;
+    consensusJobsPerSegment: number;
 }
 
 type Props = DispatchToProps & StateToProps & OwnProps;
@@ -78,6 +80,7 @@ class DetailsComponent extends React.PureComponent<Props, State> {
         this.state = {
             name: taskInstance.name,
             subset: taskInstance.subset,
+            consensusJobsPerSegment: taskInstance.consensusJobsPerSegment,
         };
     }
 
@@ -92,26 +95,38 @@ class DetailsComponent extends React.PureComponent<Props, State> {
     }
 
     private renderTaskName(): JSX.Element {
-        const { name } = this.state;
+        const { name, consensusJobsPerSegment } = this.state;
         const { task: taskInstance, onUpdateTask } = this.props;
+        const taskName = name;
 
         return (
-            <Title
-                level={4}
-                editable={{
-                    onChange: (value: string): void => {
-                        this.setState({
-                            name: value,
-                        });
+            <Row>
+                <Col>
+                    <Title
+                        level={4}
+                        editable={{
+                            onChange: (value: string): void => {
+                                this.setState({
+                                    name: value,
+                                });
 
-                        taskInstance.name = value;
-                        onUpdateTask(taskInstance);
-                    },
-                }}
-                className='cvat-text-color cvat-task-name'
-            >
-                {name}
-            </Title>
+                                taskInstance.name = value;
+                                onUpdateTask(taskInstance);
+                            },
+                        }}
+                        className='cvat-text-color cvat-task-name'
+                    >
+                        {taskName}
+                    </Title>
+                </Col>
+                {
+                    consensusJobsPerSegment > 0 && (
+                        <Col>
+                            <Tag color='#ED9C00'>Consensus Based Annotation</Tag>
+                        </Col>
+                    )
+                }
+            </Row>
         );
     }
 

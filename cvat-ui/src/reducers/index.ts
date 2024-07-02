@@ -192,6 +192,15 @@ export interface ImportState {
     instanceType: 'project' | 'task' | 'job' | null;
 }
 
+export interface ConsensusState {
+    fetching: boolean;
+    consensusSettings: any | null;
+    taskInstance: any | null;
+    mergingConsensus: {
+        [tid: number]: boolean;
+    };
+}
+
 export interface FormatsState {
     annotationFormats: any;
     fetching: boolean;
@@ -467,6 +476,7 @@ export interface NotificationsState {
             exporting: null | ErrorState;
             importing: null | ErrorState;
             moving: null | ErrorState;
+            mergingConsensus: null | ErrorState;
         };
         jobs: {
             updating: null | ErrorState;
@@ -584,6 +594,7 @@ export interface NotificationsState {
             loadingDone: string;
             importingDone: string;
             movingDone: string;
+            mergingConsensusDone: string;
         };
         models: {
             inferenceDone: string;
@@ -966,6 +977,7 @@ export interface CombinedState {
     review: ReviewState;
     export: ExportState;
     import: ImportState;
+    consensus: ConsensusState;
     cloudStorages: CloudStoragesState;
     organizations: OrganizationState;
     invitations: InvitationsState;
